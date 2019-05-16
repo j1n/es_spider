@@ -81,7 +81,6 @@ func writer(data <-chan Page, client *elastic.Client) {
 func get(url string) (string, string) {
 	var h bytes.Buffer
 	client := &http.Client{}
-	//resp, err := http.Get("http://" + url)
 	req, err := http.NewRequest("GET", "http://"+url, nil)
 	if err != nil {
 		log.Fatalln("Error(get):", err)
@@ -177,27 +176,22 @@ func createIndex(client *elastic.Client, index string) {
 	}`
 
 	ctx := context.Background()
-	createIndex, err := client.CreateIndex(index).BodyString(mapping).Do(ctx)
+	_, err := client.CreateIndex(index).BodyString(mapping).Do(ctx)
 	if err != nil {
 		panic(err)
-	}
-	if !createIndex.Acknowledged {
 	}
 }
 
 func deleteIndex(client *elastic.Client, index string) {
 	exists, err := client.IndexExists(index).Do(context.Background())
 	if err != nil {
-		// Handle error
+		panic(err)
 	}
 	if exists {
 		ctx := context.Background()
-		deleteIndex, err := client.DeleteIndex(index).Do(ctx)
+		_, err := client.DeleteIndex(index).Do(ctx)
 		if err != nil {
 			panic(err)
-		}
-		if !deleteIndex.Acknowledged {
-			// Not acknowledged
 		}
 	}
 }

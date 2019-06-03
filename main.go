@@ -9,12 +9,13 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
+//	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/olivere/elastic/v7"
 )
@@ -28,7 +29,6 @@ type Page struct {
 	url     string
 	header  string
 	body    string
-	ip_addr string
 	alexa   int
 	admin   string
 	robots  string
@@ -40,7 +40,6 @@ type esPage struct {
 	Url     string `json:"url"`
 	Header  string `json:"header"`
 	Body    string `json:"body"`
-	Ip_addr string `json:"ip_addr"`
 	Alexa   int    `json:"alexa"`
 	Admin   string `json:"admin"`
 	Robots  string `json:"robots"`
@@ -49,6 +48,10 @@ type esPage struct {
 func worker(id int, jobs <-chan Page, out chan<- Page) {
 	defer pool.Done()
 	for job := range jobs {
+		for len(out)>60 {
+			fmt.Println("Len(out)>60, wait 100ms")
+			time.Sleep(1000)
+		}
 		var work Page
 		work = job
 		fmt.Printf("Starting:%s\n", work.url)
@@ -60,10 +63,6 @@ func worker(id int, jobs <-chan Page, out chan<- Page) {
 		work.admin, _ = get(work.url + "/admin/")
 		fmt.Printf("Starting:%s/robots.txt\n", work.url)
 		work.robots, _ = get(work.url + "/robots.txt")
-		fmt.Printf("Starting get IP: %s\n", work.url)
-		ip, _ := net.LookupIP(work.url)
-		work.ip_addr = ip[0].String()
-		//		fmt.Println("W:",id,"data",job.url)
 		out <- work
 	}
 	fmt.Println("Theread", id, "finished")
@@ -98,6 +97,9 @@ func get(url string) (string, string) {
 		h.WriteString(string(k) + ": " + string(v[0]) + "\n")
 	}
 	b := string(body)
+	if len(b)>32000{
+		b=b[:32000]
+	}
 	return b, h.String()
 }
 
@@ -126,7 +128,6 @@ func index(page Page, client *elastic.Client) {
 		Url:     page.url,
 		Header:  page.header,
 		Body:    page.body,
-		Ip_addr: page.ip_addr,
 		Alexa:   page.alexa,
 		Admin:   page.admin,
 		Robots:  page.robots,
@@ -158,9 +159,6 @@ func createIndex(client *elastic.Client, index string) {
 				},
 				"body":{
 					"type":"text"
-				},
-				"ip_addr":{
-					"type":"ip"
 				},
 				"alexa":{
 					"type":"integer"
@@ -198,13 +196,13 @@ func deleteIndex(client *elastic.Client, index string) {
 
 func main() {
 	urlsFile := flag.String("src", "./src.lst", "domain list")
-	esUrl = *flag.String("url", "http://127.0.0.1:9200", "ElasticSearch url")
+	esUrl = *flag.String("url", "http://127.0.0.1:7200", "ElasticSearch url")
 	indexName := flag.String("index", "test", "Index name")
 	threads := flag.Int("threads", 100, "workers count")
 	CreateIndexOnly := flag.Bool("cio", false, "Only create index")
 	flag.Parse()
 
-	client, err := elastic.NewClient(elastic.SetURL(esUrl), elastic.SetTraceLog(log.New(os.Stderr, "", 0)))
+	client, err := elastic.NewClient(elastic.SetURL(esUrl)/*, elastic.SetTraceLog(log.New(os.Stderr, "", 0))*/)
 	if err != nil {
 		log.Fatal("Could not connect to elasticsearch", err)
 		os.Exit(1)
